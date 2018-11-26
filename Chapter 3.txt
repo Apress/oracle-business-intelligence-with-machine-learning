@@ -1,0 +1,368 @@
+/* The following code uses the data set contained in thw file winedata.csv. This file needs to be copied to 
+   the working directory from where the following programs will be run */
+
+Listing 3-1
+
+--From a SYS or SYSTEM account
+create user testr identifier by TESTR;
+alter user testr quota unlimited on users; 
+
+create table temp_tab(cd 		varchar2(10 char) constraint temp_tab_pk primary key,
+                      descr 		varchar2(30 char) not null,  
+                      eff_start_date date not null,   
+                      eff_end_date   date);
+
+library(ROracle) 
+drvr <- dbDriver("Oracle") 
+conn <- dbConnect(drvr, username = "myusername", password = "mypassword")
+select_resultset <- dbSendQuery(conn, "select * from myusername.temp_tab") 
+fetch(select_resultset) 
+row_cnt <- dbGetRowCount(select_resultset) 
+if (row_cnt == 0) {
+        warning("No results returned!") 
+} 
+dbClearResult(select_resultset) 
+dbDisconnect(conn) 
+dbUnloadDriver(drvr)
+
+
+Listing 3-2. Connecting to and Writing Data from an R data.frame into an Oracle DB 
+Table, and Reading the Same Table Data into an R data.frame and Displaying It Using 
+ROracle from Oracle R 
+
+library(ROracle) 
+drvr <- dbDriver("Oracle") 
+conn <- dbConnect (drvr, username = "testr", password = "testr", dbname="orcl")
+insertStr <- "insert into testr.temp_tab values (:1, :2, :3, : 4)"; 
+cd <- "CD13"; 
+descr <- "Description for Code 13"; 
+eff_start_date <- "2017-01-01";
+eff_start_date <- as.POSIXct (eff_start_date); 
+eff_end_dat e <- "2017-12-31";
+eff_end_dat e <- as.POSIXct (eff_end_date);
+# The TZ env variable in R must be set as also the corresponding ORA_SDTZ  
+# env var to the same value
+Sys.setenv(TZ = "EST") # EST value is obtained from SESSIONTIMEZONE value  
+# in Oracle
+Sys.setenv(ORA_SDTZ = "EST") 
+dbGetQuery(conn, insertStr, data.frame(cd, descr, eff_start_date, eff_end_date));
+dbCommit (conn)
+# Selecting data into R data.frame and displaying it
+select_resultset <- dbSendQuery(conn, "select * from testr.temp_tab") 
+data <- fetch(select_resultset) 
+dim(data) 
+data
+dbClearResult (select_resultset ) 
+dbDisconnect(conn) 
+dbUnloadDriver(drvr)
+
+
+Listing 3-3. Connecting to and Writing Data from an R data.frame into an Oracle DB 
+Table, and Reading the Same Table Data into an R data.frame and Displaying it Using 
+ROracle from Oracle R 
+
+library(ROracle) 
+drvr <- dbDriver("Oracle") 
+conn <- dbConnect (drvr, username = "testr", password = testr", dbname="orcl") 
+dbListTables(conn)
+# Selecting data based on code value CODE13 into R data.frame and displaying it
+select_resultset <- dbSendQuery(conn, "select * from testr.temp_tab where cd = :1", data = data.frame(cd='CODE13')) 
+data1 <- fetch(select_resultset) 
+dim(data1) 
+data1
+dbClearResult(select_resultset) 
+dbDisconnect(conn) 
+dbUnloadDriver(drvr)
+
+
+Listing 3-4. Using R randomForest Model to Predict Wine Origin
+
+library(randomForest) 
+winedata <- read.csv("winedata.csv", header=TRUE, sep=',' ) # The file  
+# winedata.csv is present in the working directory from where the R  
+# interface was invoked 
+head(winedata) 
+winedata$origin <- ifelse(winedata$class == 1, 'Origin1',
+                   ifelse(winedata$class == 2, 'Origin2',
+                   ifelse(winedata$class == 3, 'Origin3', '')))
+winedata$origin <- as.factor(winedata$origin)
+head(winedata$origin)
+table(winedata$origin)
+set.seed(123)
+sample_size <- 0.70 * nrow(winedata)
+sampledat a <-sample(seq_len(nrow(winedata)), sample_size)
+training_data <- winedata[sampledata, ]
+test_data <- winedata[-sampledata, ]
+wine.rf <- randomForest(origin ~ . - class, data = training_data) 
+wine.rf 
+origin_pred <- predict (wine.rf, newdata = test_data)
+table(origin_pred, test_data$origin)
+pairs(table(origin_pred, test_data$origin), main="Wine Origin Predictors")
+
+
+Listing 3-5. Using ORE to Build and Test a randomForest() Model 
+
+library(ORE)
+ore.connect (user="testr", sid="orcl", host ="localhost", password="testr") 
+ore.doEval (function() { library(randomForest)
+# The file winedata.csv is in the working directory from where ORE interface 
+# was invoked
+winedata <- read.csv("winedata.csv", header=TRUE, sep=',') 
+head(winedata)
+winedata$origin <- ifelse(winedata$class == 1, 'Origin1', 
+                   ifelse(winedata$class == 2, 'Origin2', 
+                   ifelse(winedata$class == 3, 'Origin3', ''))) 
+winedata$origin <- as.factor(winedata$origin) 
+head(winedata$origin) 
+set.seed(123)
+sample_size <- 0.70 * nrow(winedata)
+sampledata <-sample(seq_len(nrow(winedata)), sample_size) 
+training_data <- winedata[sampledata, ] 
+test_data <- winedata[-sampledata, ]
+wine.rf <- randomForest(origin ~ . - class, data = training_data) 
+origin_pred <- predict (wine. rf, newdata = test_data) 
+table(origin_pred, test_data$origin) 
+library(AppliedPredictiveModeling) 
+transparentTheme(trans = .4)
+pairs(table(origin_pred, test_data$origin), main="Wine Origin Predictors") 
+}, ore.graphics=TRUE, ore.png.height =600, ore.png.width=500)
+
+
+Listing 3-6. Using ORE to Build and Test a randomForest() Model— Detailed Version 
+
+library(ORE)
+ore.connect(user="testr", sid="orcl", host ="localhost", password="testr") 
+ore.is.connected()
+ore.doEval(function () { library(randomForest) 
+# The file winedata.csv is in the working directory from where the ORE  
+# interface was invoked
+winedata <- read.csv("winedata.csv", header=TRUE, sep=',') 
+head(winedata)
+winedata$origin <- ifelse(winedata$class == 1, 'Origin1', 
+                   ifelse(winedata$class == 2, 'Origin2', 
+                   ifelse(winedata$class == 3, 'Origin3', ''))) 
+class(winedata$origin)
+winedata$origin <- as.factor(winedata$origin)
+head(winedata$origin) 
+set.seed(123)
+sample_size <- 0.70 * nrow(winedata)
+sampledata <-sample(seq_len(nrow(winedata)), sample_size) 
+training_data <- winedata[sampledata, ] 
+test_data <- winedata[-sampledata, ] 
+formula <- origin ~ . - class
+wine.rf <- randomForest(formula, data=training_data, ntree=100, importance=TRUE, proximity=TRUE) 
+head(wine.rf) 
+class(wine.rf)
+print(wine.rf) # Print RF model to see important features 
+plot(wine.rf) # Plot RF Model to see the corresponding RF model graph 
+importance(wine.rf) # See the importance of the variables 
+varImpPlot(wine.rf) # Plot RF Model see the variable Importance 
+origin_pred <- predict(wine.rf, newdata = test_data) 
+head(origin_pred)
+table(origin_pred, test_data$origin) 
+plot(margin(wine.rf, test_data$origin)) # Plot margin of error for acc	uracy 
+library(AppliedPredictiveModeling) 
+transparentTheme(trans = .4)
+pairs(table(origin_pred, test_data$origin), main="Wine Origin Predictors") 
+}, ore.graphics=TRUE, ore.png.height =600, ore.png.width=500) 
+
+
+Listing 3-7. Use of ore.randomForest to Predict Wine Origin 
+
+library(ORE) 
+ore.connect ("testr", "orcl", "localhost", "testr") 
+library(OREmodels)
+# The file winedata.csv is in the working directory frm which ORE interface 
+# was invoked
+winedata <- read.csv("winedata.csv", header=TRUE, sep=',')
+head(winedata)
+winedata$origin <- ifelse(winedata$class == 1, 'Origin1', 
+                   ifelse(winedata$class == 2, 'Origin2', 
+                   ifelse(winedata$class == 3, 'Origin3', ''))) 
+class(winedata$origin)
+winedata$origin <- as.factor(winedata$origin) 
+class(winedata$origin) 
+head(winedata$origin) 
+table(winedata$origin) 
+set.seed(123)
+sample_size <- 0.70 * nrow(winedata)
+sampledata <-sample(seq_len(nrow(winedata)), sample_size) 
+training_data <- winedata[sampledata, ] 
+class(training_data)
+TRAINING_DATA <- ore.push(training_data) 
+class(TRAINING_DATA) 
+test_data <- winedata[-sampledata, ] 
+TEST_DATA <- ore.push(test_data) 
+class(TEST_DATA) 
+head(TRAINING_DATA) 
+head(TEST_DATA)
+wine.rf <- ore.randomForest(origin ~ . - class, TRAINING_DATA) 
+class(wine.rf)
+tree15 = grabTree(wine.rf, k = 15, label Var = TRUE) 
+origin_pred <- predict(wine.rf, TEST_DATA, type = "all", supplemental.cols="origin")
+res <- table(origin_pred$origin, origin_pred$prediction) 
+library(AppliedPredictiveModeling) 
+transparentTheme(trans = .4)
+pairs(table(origin_pred$origin, origin_pred$prediction), main="Wine Origin Predictors")
+res
+
+
+Listing 3-8. Using SQL Interface of Embedded R Execution to Build and Test a randomForest() Model
+
+begin
+sys.rqScriptDrop('rTestRF');
+sys.rqScriptCreate('rTestRF',
+' function () {
+library(randomForest)
+setwd("<working_directory_name>")
+winedata <- read.csv("winedata.csv", header=TRUE, sep='','')
+head(winedata)
+winedata$origin <- ifelse(winedata$class == 1, ''Origin1'',
+ifelse(winedata$class == 2, ''Origin2'',
+ifelse(winedata$class == 3, ''Origin3'', '''')))
+winedata$origin <- as.factor(winedata$origin) 
+head(winedata$origin)
+set.seed(123)
+sample_size <- 0.70 * nrow(winedata)
+sampledata <-sample(seq_len(nrow(winedata)), sample_size)
+training_data <- winedata[sampledat a, ]
+test_data <- winedata[-sampledata, ]
+wine.rf <- randomForest(origin ~ . - class, data = training_data)
+origin_pred <- predict(wine.rf, newdata = test_data)
+res <- table(origin_pred, test_data$origin)
+res.df <- as.matrix(res)
+head(res.df)
+png("rTestRF.png")
+pairs(table(origin_pred, test_data$origin), main="Wine Origin Predictors")  
+dev.off()
+res.df
+}' );
+end;
+/
+
+
+Listing 3-9. SQL Query to Verify That the Script rTestRF is Created in Oracle RB
+
+select * from user_rq_scripts where name = 'rTestRF';
+
+
+Listing 3-10. SQL Interface of Embedded R Execution Based Query Invocation of Script rTestRF Defined in Listing 3-8
+
+set pages 1000
+set long 200000
+select * from table(rqEval(NULL, 'XML', 'rTestRF'));
+
+
+Listing 3-11. Listing 3-10 Modified to Generate Structured Table Output
+
+select *
+from table(rqEval(
+NULL,
+'select CAST(''a'' as VARCHAR2(50)) "origin_pred",  
+CAST(''b'' AS VARCHAR2(50)) "Var2", 1 as "Freq" from dual' ,
+'rTestRF')); 
+
+
+Listing 3-12. Listing 3-8 Modified to Capture Image Generated in XML Format
+
+begin
+sys.rqScriptDrop('rTestRF_final1' ); 
+sys.rqScriptCreate('rTestRF_final1',
+' function () {
+library(randomForest)
+setwd("<working_directory_name>")
+winedata <- read.csv("winedata.csv", header=TRUE, sep='','') 
+winedata$origin <- ifelse(winedata$class == 1, ''Origin1'',
+ifelse(winedata$class == 2, ''Origin2'',
+ifelse(winedata$class == 3, ''Origin3'', '''')))
+winedata$origin <- as.factor(winedata$origin) 
+set.seed(123)
+sample_size <- 0.70 * nrow(winedata)
+sampledata <-sample(seq_len(nrow(winedata)), sample_size)
+training_data <- winedata[sampledata, ]
+test_data <- winedata[-sampledata, ]
+wine.rf <- randomForest(origin ~ . - class, data = training_data)
+origin_pred <- predict(wine.rf, newdata = test_data)
+res <- table(origin_pred, test_data$origin)
+pairs(table(origin_pred, test_data$origin), main="Wine Origin Predictors")
+res
+}' );
+end;
+/
+
+
+Listing 3-13. SQL Interface of Embedded R Execution Based Query Invocation of Script rTestRF_final1 Defined in Listing 3-12
+
+set pages 1000
+set long 100000
+select xmltype(a.value).getClobVal() as "XML Output with Image included"
+from   table(rqEval(NULL, 'XML', 'rTestRF_final1')) a;
+
+
+Listing 3-14. BuildandScoreRF Script Using SQL Interface That Builds and Scores the 
+Wine Class Data Using randomForest R Function 
+
+begin    
+sys.rqscriptDrop('BuildandScoreRF');    
+sys.rqScriptCreate(' BuildandScoreRF',
+' function(winedata) { library(randomForest)
+winedata$origin <- ifelse(winedata$class == 1, ''Origin1'', 
+ifelse(winedata$class == 2, ''Origin2'', 
+ifelse(winedata$class == 3, ''Origin3'', ''''))) 
+winedata$origin <- as.factor(winedata$origin) 
+set.seed(123)
+sample_size <- 0.70 * nrow(winedata)
+sampledata <-sample(seq_len(nrow(winedata)), sample_size) 
+training_data <- winedata[sampledata, ] 
+test_data <- winedata[-sampledata, ]
+wine.rf <- randomForest(origin ~ . - class, data = training_data) 
+origin_pred <- predict(wine.rf, newdata = test_data) 
+res <- table(origin_pred, test_data$origin)
+pairs(table(origin_pred, test_data$origin), main="Wine Origin Predictors")
+res 
+}' ); 
+end;
+/
+
+
+Listing 3-15. validateRF Script Using SQL Interface That Prepares the Input Data and 
+Calls the BuildandScoreRF Script Based R Function 
+
+begin   
+sys.rqScriptDrop('validateRF');   
+sys.rqScriptCreate('validateRF',
+' function() { 
+   library(ORE)
+   ore.connect ("testr", "orcl", "localhost", "testr")
+   setwd("<working_directory_name>")
+   inputdata <- read.csv("winedata.csv", header=TRUE, sep='','')
+   ore.drop(table="WINE_DATA")     
+   ore.create(inputdata, table="WINE_DATA")
+   ore.scriptLoad(name="BuildandScoreRF")
+   res1 <- BuildandScoreRF(inputdata)
+   res1.df <- data.frame(res1)
+   res1.df 
+  }' );
+end; 
+/
+
+-- To verify that the output of validateRF is accurate, first query it for SQL tabular output by executing the following query:
+
+select *
+from   table(rqEval (
+  NULL,
+ 'select CAST(''a'' as VARCHAR2(50)) "origin_pred", CAST(''b'' AS VARCHAR2(50)) Var2",
+ 1 as "Freq" from dual',
+ 'validateRF'));
+
+Listing 3-16. SQL Based Query for Obtaining PNG Graph Output of validateRF Script Execution
+
+select *
+from   table(rqEval(
+ NULL,
+ 'PNG',
+ 'validateRF')); 
+
+
+
+

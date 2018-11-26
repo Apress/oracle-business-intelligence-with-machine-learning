@@ -1,0 +1,373 @@
+/* This chapter uses the winedata.csv and Wineptobuy.csv datasets */
+
+
+Listing 6-1. Using ore.randomForest to Predict Wine Origin
+
+library(ORE) 
+ore.connect("testr","orcl","localhost","testr") 
+library(OREmodels) 
+winedata <- read.csv("winedata.csv", header=TRUE, row.names = NULL, sep=',') 
+head(winedata) 
+winedata$origin <- ifelse(winedata$class == 1, 'Origin1',
+ifelse(winedata$class == 2, 'Origin2', 
+ifelse(winedata$class == 3, 'Origin3', ''))) 
+class(winedata$origin) 
+winedata$origin <- as.factor(winedata$origin) 
+class(winedata$origin) 
+head(winedata$origin) 
+table(winedata$origin) 
+set.seed(123) 
+sample_size <- 0.70 * nrow(winedata) 
+sampledata <- sample(seq_len(nrow(winedata)), sample_size) 
+training_data <- winedata[sampledata, ] 
+class(training_data) 
+TRAINING_DATA <- ore.push(training_data) 
+class(TRAINING_DATA) 
+test_data <- winedata[-sampledata, ] 
+TEST_DATA <- ore.push(test_data) 
+class(TEST_DATA) 
+head(TRAINING_DATA) 
+head(TEST_DATA) 
+wine.rf <- ore.randomForest(origin ~ . - class, TRAINING_DATA) 
+class(wine.rf) 
+tree15 = grabTree(wine.rf, k = 15, labelVar = TRUE) 
+origin_pred <- predict(wine.rf, TEST_DATA, type = "all", supplemental. cols="origin") 
+res <- table(origin_pred$origin, origin_pred$prediction) 
+library(AppliedPredictiveModeling) 
+transparentTheme(trans=.4) 
+pairs(table(origin_pred$origin, origin_pred$prediction), main="Wine Origin Predictors")
+test_data$id <- seq_len(nrow(test_data)) 
+row.names(test_data) <- test_data$id 
+head(test_data[,c(16,1,15)]) 
+origin_pred2 <- ore.pull(origin_pred) 
+origin_pred2$id <- seq_len(nrow(origin_pred2)) 
+head(origin_pred2) 
+row.names(origin_pred2) <- origin_pred2$id 
+head(test_data) 
+head(origin_pred2) 
+head(origin_pred2[,c(6,5,4)]) 
+df1 <- test_data[,c(16,15,1:14)] 
+df2 <- origin_pred2[, c(1:6)] 
+class(df1) 
+df1_new <- df1[order(df1$origin),] 
+head(df1_new) 
+df2_new <- df2[order(df2$origin),] 
+head(df2_new) 
+nrow(df1_new) 
+nrow(df2_new)
+data_set <- data.frame(df1_new, df2_new) 
+nrow(data_set) 
+head(data_set) 
+colnames(data_set)[20] <- "Source" 
+head(data_set) 
+data_set$propensity_to_buy <- ifelse((data_set$Source == 'Origin1'), 1,
+ifelse((data_set$Source == 'Origin2'), 0, 
+ifelse((data_set$Source == 'Origin3'), 1, ''))) 
+class(data_set) 
+nrow(data_set) 
+head(data_set) 
+write.csv(data_set, "Wineptobuy.csv", row.names=FALSE)
+
+
+Listing 6-2. Using Logistic Regression to Determine the Propensity to Buy Based on the Wine Source
+
+library(ORE) 
+ore.connect("testr","orcl","localhost","testr") 
+library(OREmodels) 
+winedata <- read.csv("Wineptobuy.csv", header=TRUE, row.names = NULL, sep=',')
+head(winedata) 
+summary(winedata) 
+sapply(winedata, sd) 
+xtabs(~propensity_to_buy +Source, data=winedata) 
+xtabs(~propensity_to_buy +origin, data=winedata) 
+label <- winedata[,23] 
+head(label) 
+library(caTools) 
+s <- sample.split(label, SplitRatio=3/4) 
+train_set <- winedata[s, c(2:20, 23)] 
+test_set <- winedata[!s, c(2:20, 23)] 
+head(train_set) 
+nrow(train_set) 
+head(test_set) 
+nrow(test_set) 
+sp.tab <- table(train_set$Source, train_set$propensity_to_buy) 
+sp.tab 
+train_set$Source <- factor(train_set$Source) 
+logitM <- glm(propensity_to_buy ~ Source, data = train_set, family="binomial", control = glm.control(maxit=100)) 
+summary(logitM) 
+anova(logitM) 
+# install.packages("aod") 
+library(aod) 
+wald.test(b = coef(logitM), Sigma = vcov(logitM), Terms =  1:2) 
+wald.test(b = coef(logitM), Sigma = vcov(logitM), Terms =  1:3) 
+wald.test(b = coef(logitM), Sigma = vcov(logitM), Terms =  2:3) 
+exp(coef(logitM)) 
+head(test_set) 
+nrow(test_set) 
+head(data.frame(test_set[,c(1:19)]))
+nrow(data.frame(test_set[,c(1:19)])) 
+test_set$p_to_buyPred <- predict(logitM,  newdata = data.frame(test_ set[,c(1:19)]), type="response") 
+class(test_set$p_to_buyPred) 
+head(test_set) 
+test_set$p_to_buyPred <- ifelse(test_set$p_to_buyPred > 0.5,1,0) 
+misClasificError <- mean(test_set$p_to_buyPred != test_set$propensity_to_buy)
+print(paste('Accuracy',1-misClasificError)) 
+#### 
+library(ROCR) 
+class(test_set$p_to_buyPred) 
+pr1 <- prediction(test_set$p_to_buyPred, test_set$propensity_to_buy) 
+class(pr1) 
+prf1 <- performance(pr1, measure = "tpr", x.measure = "fpr") 
+class(prf1) 
+pdf("plot_prf1.pdf") 
+plot(prf1, colorize = TRUE) # , text.adj = c(-0.2,1.7) 
+dev.off() 
+auc1 <- performance(pr1, measure = "auc") 
+auc1 <- auc1@y.values[[1]] 
+auc1 
+#### 
+library(ROCR) 
+p <- predict(logitM, newdata= data.frame(test_set[,c(1:19)]), type="response") 
+class(p) 
+pr <- prediction(p, test_set$propensity_to_buy) 
+class(pr) 
+prf <- performance(pr, measure = "tpr", x.measure = "fpr") 
+class(prf) 
+plot(prf, colorize = TRUE) # , text.adj = c(-0.2,1.7) 
+auc <- performance(pr, measure = "auc") 
+auc <- auc@y.values[[1]] 
+auc 
+test_set2 <- data.frame(test_set[,c(1:19)]) 
+test_set3 <- cbind(test_set2, predict(logitM, newdata=test_set2, type = "link", se = TRUE))
+test_set3 <- within(test_set3, { 
+PredictedProb <- plogis(fit)
+LL <- plogis(fit - (1.96 * se.fit)) 
+UL <- plogis(fit + (1.96 * se.fit)) 
+}) 
+head(test_set3)
+######
+library(ggplot2) 
+pdf("test_set3_ribbon.pdf") 
+ggplot(test_set3, aes(x = Source, y = PredictedProb, group=PredictedProb)) +
+geom_line(aes(colour = PredictedProb), size = 1) + 
+geom_point() + 
+geom_ribbon(aes(ymin = LL, ymax = UL, fill = PredictedProb), alpha = 0.25)  +
+scale_fill_gradient(low="red", high="green") +
+ggtitle("Predicting Propensity to buy based on Wine Source") + 
+ylab("Predicted Probability - p_to_buyPred") 
+dev.off() 
+fillc_train <- train_set$Source # c("Origin1", "Origin2", "Origin3") 
+train_set <- cbind(train_set, fillc_train) 
+library(ggplot2) 
+pdf("WineOriginTrainingDataGLMPlot_test_bar.pdf") 
+ggplot(data=train_set, aes(x=Source, y=propensity_to_buy, fill = Source)) +
+geom_bar(stat="identity", width=0.25) + 
+scale_fill_manual("legend", values = c("Origin1" = "green", "Origin2" = "orange", "Origin3" = "blue")) 
+dev.off() 
+fillc_test <- test_set$Source 
+test_set <- cbind(test_set, fillc_test) 
+library(ggplot2) 
+pdf("WineOriginTestDataGLMPlot_test_bar.pdf") 
+ggplot(data=test_set, aes(x=Source, y=p_to_buyPred, fill = Source)) + 
+geom_bar(stat="identity", width=0.25) + 
+scale_fill_manual("legend", values = c("Origin1" = "green", "Origin2" = "orange", "Origin3" = "blue"))
+dev.off() 
+library(ggplot2) 
+pdf("WineOriginTrainingDataGLMPlot_test_lineNpoint.pdf") 
+ggplot(data=train_set, aes(x=Source, y=propensity_to_buy, group=1)) + 
+geom_line(aes(colour = propensity_to_buy), size = 1) + 
+geom_point() + 
+stat_smooth(method="glm", family="binomial", se=FALSE) 
+dev.off() 
+library(ggplot2) 
+pdf("WineOriginTestDataGLMPlot_test_lineNpoint.pdf") 
+ggplot(data=test_set, aes(x=Source, y=p_to_buyPred, group=1)) + 
+geom_line(aes(colour = p_to_buyPred), size = 1) + 
+geom_point() + 
+stat_smooth(method="glm", family="binomial", se=FALSE) 
+dev.off()
+
+
+Listing 6-3. R Script That Creates an Oracle Table Based on the input .csv File
+
+begin 
+sys.rqScriptDrop('CreateInputTable'); 
+sys.rqScriptCreate('CreateInputTable', 
+'function(dat) {    
+    library(ORE)    
+    ore.connect("testr","orcl","localhost","testr")    
+    setwd("<working_directory_name>")    
+    dat <- read.csv("Wineptobuy.csv")    
+    ore.drop(table="WINE_SOURCE_DATA")    
+    ore.create(dat, table="WINE_SOURCE_DATA")   
+   }'); 
+end; 
+/
+
+--Execute the preceding code to create the WINE_SOURCE_DATA table in the testr schema. This --is done using the following select statement:
+
+select * from table (rqEval(NULL, 'XML', 'CreateInputTable'));
+
+
+Listing 6-4. GLM-Based Logistic Regression Model to Build and Score the Propensity to Buy Based on the Wine Source
+
+begin   
+sys.rqscriptDrop('BuildandScoreptobuy');   
+sys.rqScriptcreate('BuildandScoreptobuy', 
+'function(table_name) { 
+ore.sync(table=table_name) 
+ore.attach() 
+winedata <- ore.pull(ore.get(table_name)) 
+winedata$ID <- 1:nrow(winedata) 
+sapply(winedata, sd) 
+xtabs(~propensity_to_buy +Source, data=winedata) 
+xtabs(~propensity_to_buy +origin, data=winedata) 
+label <- winedata[,23] 
+library(caTools) 
+s <- sample.split(label, SplitRatio=3/4) 
+train_set <- winedata[s, c(2:20, 23)] 
+test_set <- winedata[!s, c(2:20, 23)] 
+sp.tab <- table(train_set$Source, train_set$propensity_to_buy) 
+train_set$Source <- factor(train_set$Source) 
+logitM <- glm(propensity_to_buy ~ Source, data = train_set, family="binomial", control = glm.control(maxit=100)) 
+library(aod) 
+head(data.frame(test_set[,c(1:19)])) 
+p_to_buyPred <- predict(logitM,  newdata = data.frame(test_set[,c(1:19)]), type="response")
+p_to_buyPred <- ifelse(p_to_buyPred > 0.5,1,0) 
+misClasificError <- mean(p_to_buyPred != test_set$propensity_to_buy)
+p_to_buyPred[as.integer(rownames(p_to_buyPred))] <- p_to_buyPred 
+res <- cbind(data.frame(test_set[,c(1:19)]), 
+PRED = p_to_buyPred) 
+res1.df <- data.frame(res[,c(1,2,19,20)]) 
+library(ggplot2) 
+gg_plot <- ggplot(data=test_set, aes(x=Source, y=p_to_buyPred, group=1)) + 
+geom_line(aes(colour = p_to_buyPred), size = 1) + geom_point() + 
+stat_smooth(method="glm", family="binomial", se=FALSE) + 
+ggtitle("Predicting Propensity to buy based on Wine Source") + 
+labs(x="Source", y="Predicted Probability - p_to_buyPred") 
+plot(gg_plot) 
+res1.df 
+}'); 
+end; 
+/
+
+
+Listing 6-5. R Function That Calls the BuildandScoreptobuy Function to Output Predicted Probability of Propensity to Buy Based on the Source
+
+begin 
+sys.rqScriptDrop('CallPtoBuy'); 
+sys.rqScriptCreate('CallPtoBuy', 
+'function(dat, input_table_name) {     
+    input_table_name <- "WINE_SOURCE_DATA"    
+    ore.scriptLoad(name = "BuildandScoreptobuy")    
+    res1 <- BuildandScoreptobuy(input_table_name)    
+    res1.df <- data.frame(res1)    
+    res1.df   
+   }'); 
+end; 
+/
+
+
+--Outputting XML
+
+select * 
+from   table(rqTableEval(cursor(select * from WINE_SOURCE_DATA),
+             cursor(select 1 as "ore.connect", 'WINE_SOURCE_ DATA' as "input_table_name"
+                    from dual), 
+             'XML', 
+             'CallPtoBuy'));
+
+select xmltype(a.value).getClobVal() as "XML Output with image included" 
+  from table(rqTableEval(cursor(select * from WINE_SOURCE_DATA), 
+             cursor(select 1 as "ore.connect", 'WINE_SOURCE_DATA' as "input_table_name"
+                    from dual), 
+             'XML', 
+             'CallPtoBuy')) a;
+
+--Outputting individual columns
+
+select *  
+  from table(rqTableEval(cursor(select * from WINE_SOURCE_DATA),  
+             cursor(select 1 as "ore.connect", 'WINE_SOURCE_DATA' as "input_table_ name"
+                    from dual),   
+             'select "origin", "class", "Source", 1 "PRED" from WINE_SOURCE_DATA a',  
+             'CallPtoBuy'));
+
+--Outputting a PNG graph
+
+select id, image 
+  from table(rqTableEval(cursor(select * from WINE_ SOURCE_DATA),
+             cursor(select 1 as "ore.connect", 'WINE_SOURCE_DATA' as "input_table_ name"
+                    from dual),    
+             'PNG',
+             'CallPtoBuy'));
+
+			 
+Listing 6-6. GLM-Based Logistic Regression Model to Build and Score Propensity to Buy Based on Wine Source That Plots the AUC Curve
+
+begin    
+sys.rqscriptDrop('BuildandScoreptobuyAUC');   
+sys.rqScriptcreate('BuildandScoreptobuyAUC',
+'function(table_name) { 
+    ore.sync(table=table_name) 
+    ore.attach() 
+    winedata <- ore.pull(ore.get(table_name)) 
+    winedata$ID <- 1:nrow(winedata) 
+    sapply(winedata, sd) 
+    xtabs(~propensity_to_buy +Source, data=winedata) 
+    xtabs(~propensity_to_buy +origin, data=winedata) 
+    label <- winedata[,23] 
+    library(caTools) 
+    s <- sample.split(label, SplitRatio=3/4) 
+    train_set <- winedata[s, c(2:20, 23)] 
+    test_set <- winedata[!s, c(2:20, 23)] 
+    sp.tab <- table(train_set$Source, train_set$propensity_to_buy) 
+    train_set$Source <- factor(train_set$Source) 
+    logitM <- glm(propensity_to_buy ~ Source, data = train_set, family="binomial", control = glm.control(maxit=100)) 
+    library(aod) 
+    head(data.frame(test_set[,c(1:19)])) 
+    p_to_buyPred <- predict(logitM,  newdata = data.frame(test_set[,c(1:19)]), type="response") 
+    p_to_buyPred <- ifelse(p_to_buyPred > 0.5,1,0) 
+    misClasificError <- mean(p_to_buyPred != test_set$propensity_to_buy)
+    p_to_buyPred[as.integer(rownames(p_to_buyPred))] <- p_to_buyPred 
+    res <- cbind(data.frame(test_set[,c(1:19)]), 
+    PRED = p_to_buyPred) 
+    res1.df <- data.frame(res[,c(1,2,19,20)]) 
+    library(ROCR) 
+    pr1 <- prediction(p_to_buyPred, test_set$propensity_to_buy) 
+    class(pr1) 
+    prf1 <- performance(pr1, measure = "tpr", x.measure = "fpr") 
+    class(prf1) 
+    plot(prf1, colorize = TRUE) # , text.adj = c(-0.2,1.7) 
+    res1.df 
+   }'); 
+end; 
+/
+
+
+Listing 6-7. Code for Calling the BuildandScoreptobuyAUC
+
+begin 
+sys.rqScriptDrop('CallPtoBuyAUC'); 
+sys.rqScriptCreate('CallPtoBuyAUC', 
+'function(dat, input_table_name) {    
+    input_table_name <- "WINE_SOURCE_DATA"    
+    ore.scriptLoad(name = "BuildandScoreptobuyAUC")    
+    res1 <- BuildandScoreptobuyAUC(input_table_name)    
+    res1.df <- data.frame(res1)    
+    res1.df   
+   }'); 
+end;
+/
+
+
+--Calling the function in listing 6-7
+
+select * 
+  from table(rqTableEval(cursor(select * from WINE_SOURCE_DATA), 
+                         cursor(select 1 as "ore.connect", 
+                                       'WINE_SOURCE_DATA' as "input_table_name" 
+                                from dual), 
+                         'PNG', 
+                         'CallPtoBuyAUC'));
+

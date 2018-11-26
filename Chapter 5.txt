@@ -1,0 +1,254 @@
+/* This chapter uses the Wineptobuy.csv dataset */
+
+Listing 5-1. Code for Further Analyzing the Use Case of propensity_to_buy
+
+library(ORE) 
+ore.connect("testr","orcl","localhost","testr") 
+library(OREmodels) 
+# The file Wineptobuy.csv is assumed to be in the working directory from  
+# where the ORE CLI is called 
+winedata <- read.csv("Wineptobuy.csv", header=TRUE, row.names = NULL, sep=',') 
+# loads input data into R data frame head(winedata) 
+# Displays 6 rows of data in the data frame winedata 
+summary(winedata) # Gives a statistical summary of the data in winedata data  
+# frame 
+sapply(winedata, sd) 
+# Applies the standard deviation sd function to each  
+# variable in the data set winedata 
+# The below two lines display a two-way contingency table of response  
+# variable propensity_to_buy and the predictors 
+# Source and origin respectively to ensure there are not any any 0 cells in  
+# the winedata data set. In other words, 
+# xtabs function displays the frequency or count of the levels of  
+# categorical variables as matrix or table - a 
+# cross-tabulation, revealing the relationship between propensity_to_buy and  
+# Source; and between propensity_to_buy # and origin. 
+xtabs(~propensity_to_buy +Source, data=winedata) 
+xtabs(~propensity_to_buy +origin, data=winedata) 
+label <- winedata[,23] 
+head(label) 
+library(caTools) 
+s <- sample.split(label, SplitRatio=3/4) # Derives a sample split s based on  
+# split ratio of 0.75 
+train_set <- winedata[s, c(2:20, 23)] # Samples the input data into train_ 
+# set (columns 2-20, and 23) based on s 
+test_set <- winedata[!s, c(2:20, 23)] # Samples the data not in train_set  
+# into test_set 
+head(train_set) # Displays 6 rows of the train_set 
+nrow(train_set) # Displays count of rows in train set 
+head(test_set) # Displays 6 rows of the test set 
+nrow(test_set) # Displays count of rows in test set 
+# Loads a matrix of Source and propensity_to_buy columns in train_set into  # sp.tab 
+sp.tab <- table(train_set$Source, train_set$propensity_to_buy) 
+sp.tab # Display the above matrix 
+train_set$Source <- factor(train_set$Source) # This treats source as a  
+# categorical variable 
+# Builds a Logistic Regression Model in R using 'glm' Machine Learning  
+# algorithm with response variable as
+# propensity_to_buy and predictor variable as Source using the train_set  
+# data set. The family function for the 
+# glm model is "binomial" (indicating that the model is a binomial model)  
+# and the link is logit), and the maximum 
+# iterations to be performed is 100 
+logitM <- glm(propensity_to_buy ~ Source, data = train_set, family="binomial", control = glm.control(maxit=100)) 
+# Displays a summary of the logitM model just built in terms of the function 
+# call for glm; the deviance residuals 
+# (Min, 1st Quantile, Median, 3rd Quantile, and the Max) which are a measure 
+# of the model fit or in other words the 
+# distribution of of the deviance residuals for observations used in the  
+# model; the table of coefficients with the 
+# coefficients, their standard errors, the z-statistic or the Wald  
+# Z-statistic, and the associated p-values 
+# displayed across, and the Intercept and the predictor variables displayed 
+# down the matrix; the fit indices which 
+# include the null deviance and residual deviance and the AIC (Akaike  
+# Information Criteria). A model with minumum 
+# AIC value is considered to fit without penalty for the model coefficients. 
+summary(logitM) 
+anova(logitM) 
+# install.packages("aod") 
+# The wald.test function tests for the Chi-squared test statistic based on  
+# the coeffieicents of the logitM model. In 
+# our case we can test the significance of Source predictor variable using  
+# this function from the aod library of R. 
+# The order of the model coefficients in the table of coefficients is same  
+# as the order of terms in the model. This 
+# is relevant since the wald.test function refers to their coefficients by  
+# their order in the model. In the below 
+# three wald.test calls, the argument b passes the coefficients, Sigma gives 
+# the variance and covariance matrix of 
+# the error terms, and Terms indicates which terms in the model are to be  
+# tested. In our use case these are the 
+# terms 2 and 3. Also, running the function wald.test for Terms 1 and 2; and 
+# 1,2 and 3 in addition to terms 2 and 3 
+# gives a chi-squared test statistic with degress of freedom 2, 3 and 2  
+# respectively and the p-value of 1.0 in all three cases thereby showing that 
+# Source is statistically significant. 
+library(aod) 
+wald.test(b = coef(logitM), Sigma = vcov(logitM), Terms =  1:2) 
+wald.test(b = coef(logitM), Sigma = vcov(logitM), Terms =  1:3) 
+wald.test(b = coef(logitM), Sigma = vcov(logitM), Terms =  2:3) 
+# The exp function below exponentiates the coefficients and analyzes them as 
+# odds-ratios. 
+exp(coef(logitM)) 
+head(test_set) # Displays 6 rows of the test_set data set
+nrow(test_set) # Displays number of rows in test_set 
+head(data.frame(test_set[,c(1:19)])) # Displays 6 rows of columns 1 to 19 in 
+# test_set 
+nrow(data.frame(test_set[,c(1:19)])) # Displays count of rows taking columns 
+# 1 to 19 in test_set 
+# Uses the predict() function in R to do a prediction of propensity to buy  
+# on a new data set which consists of 
+# all rows and columns 1 to 19 in test_set indicating that the values of the 
+# predictor variables are from this 
+# test_set and that the values of test_set$p_to_buyPred must be predictions 
+# using predict(). This is called scoring 
+# the model. The type of response is response and means the type of  
+# prediction is a predicted probability as opposed 
+# to an actual value. 
+# Note that the original column propensity_to_buy is eliminated in the new  
+# data set (test_set) while scoring model. 
+# It outputs a set of probabilities (as opposed to actual values) that fall 
+# in the closed interval [0,1]. 
+# These probabilities are stored in a newly created column p_to_buyPred in  
+# the test_set. 
+test_set$p_to_buyPred <- predict(logitM,  newdata = data.frame(test_ set[,c(1:19)]), type="response") 
+class(test_set$p_to_buyPred) # Shows the R class of test_set$p_to_buyPred 
+head(test_set) # Displays 6 rows of test_set which includes the newly  
+# created column p_to_buyPred 
+test_set$p_to_buyPred <- ifelse(test_set$p_to_buyPred > 0.5,1,0)  
+# Quantifies probabilities into values 1 and 0 
+misClasificError <- mean(test_set$p_to_buyPred != test_set$propensity_to_ buy) 
+# Displays misclassification error 
+print(paste('Accuracy',1-misClasificError)) 
+# Displays the accuracy if the  
+# model built and scored. 
+# An accuracy approaching 1 is considered optimal. 
+# The library ROCR is used to load the R functions for plotting the Reciever 
+# Operating Characteristic (ROC). ROC  
+# summarizes the performance of the model by evaluating the cross- 
+# correlation between true +ve rate or sensitivity 
+# and false -ve rate or (1-specificity). Keeping p>0.5, ROC summarizes the  
+# prediction for all possible values of 
+# p>0.5. The area under curve (AUC) is an optimal performance metric for ROC 
+# and the higher value of AUC, the better 
+# the #prediction of the glm model. 
+# This package enables visualizing the performance of scoring classifiers  
+# using the prediction, performance and plot 
+# functions. Its definition can be found at http://rocr.bioinf.mpi-sb.mpg. 
+# de/ 
+library(ROCR) 
+class(test_set$p_to_buyPred) # Displays the R class of the predicted value  
+# p_to_buyPred of test_set
+# Used the R prediction() function of GLM to transform the input data  
+# containing predictions into a standard format 
+# Here it transforms two columns of data given by p_to_buyPred (predictions) 
+# and propensity_to_buy into a standard 
+# format and returns an object of class prediction. 
+pr1 <- prediction(test_set$p_to_buyPred, test_set$propensity_to_buy) 
+class(pr1) # This gives "prediction" as the class 
+# The performance function is used to do a predictor evaluation. Its  
+# signature is 
+# performance(prediction.obj, measure, x.measure). It works on a prediction 
+# object (pr1 in this case), 
+# and measure is performance measure to used for evaluation ("tpr" or the  
+# true positive rate in this case), and 
+# x.measure is a second performance measure ("fpr" or false positive rate). 
+# The measure is plotted in y-axis and the 
+# x.measure is plotted in the x-axis to result in a 2D curve. Other measures 
+# can also be passed such as "auc" (area 
+# under ROC), "acc" (accuracy), "err" (Error rate) etc. 
+prf1 <- performance(pr1, measure = "tpr", x.measure = "fpr") 
+class(prf1) # This gives "performance" as the class
+pdf("plot_prf1.pdf") # This saves the plotted graph as a PDF file in the working directory 
+# This plots an object of class performance, in our case, prf1. colorize  
+# specifies whether the curve is to be 
+# colorized according to cutoff. 
+plot(prf1, colorize = TRUE) # , text.adj = c(-0.2,1.7) 
+dev.off() 
+# This makes a different call to performance() function with the measure to 
+# be evaluated as "auc" or area under ROC 
+# curve. This returns the performance of the above prediction with "auc" as 
+# the evaluation measure. Auc is the area 
+# under ROC curve. 
+auc1 <- performance(pr1, measure = "auc") 
+auc1 <- auc1@y.values[[1]] 
+auc1 # "auc" closer to 1 or equaling 1 indicates a goodness of fit and a  
+# better prediction performance of the model 
+library(ROCR) 
+p <- predict(logitM, newdata= data.frame(test_set[,c(1:19)]), type="response") 
+class(p) 
+pr <- prediction(p, test_set$propensity_to_buy) 
+class(pr) 
+prf <- performance(pr, measure = "tpr", x.measure = "fpr") 
+class(prf) 
+plot(prf, colorize = TRUE) # , text.adj = c(-0.2,1.7) 
+auc <- performance(pr, measure = "auc") 
+auc <- auc@y.values[[1]] 
+auc 
+test_set2 <- data.frame(test_set[,c(1:19)])
+head(test_set2) 
+# The within R function uses the test_set3 data set as its argument and  
+# generates a data.frame that is used for the 
+# ribbon layer data. The very first line inside the within generates the  
+# predicted probabilities along with the 
+# standard errors that aid in plotting a confidence interval. The argument  
+# se is specified to indicate whether to 
+# display confidence interval to use (0.95 by default) and also enables to  
+# plot a confidence interval. The 
+# type="link" gives the estimates on the link scale. 
+# The remaining lines back transform both the predicted values and  
+# confidence intervals into probabilities. 
+# The cbind does a column-wise bind of the data frame test_set2 with the  
+# predicted outcome column scored by 
+# the predict function that is passed as the second argument to cbind. For  
+# logistic regression model, the confidence 
+# intervals are based on the profiled log-likelihood function. The lower and 
+# upper indicate the lower and upper 
+# confidence limits. 
+test_set3 <- cbind(test_set2, predict(logitM, newdata=test_set2, type = "link", se = TRUE)) test_set3 <- within(test_set3, { 
+PredictedProb <- plogis(fit) 
+lower <- plogis(fit - (1.96 * se.fit)) 
+upper <- plogis(fit + (1.96 * se.fit)) 
+}) 
+head(test_set3) 
+library(ggplot2) 
+pdf("test_set3_ribbon.pdf") # The below line sets up the graph canvas with  
+# response variable on y-axis 
+ggplot(test_set3, aes(x = Source, y = PredictedProb, group=PredictedProb)) + geom_line(aes(colour = PredictedProb), size = 1) + geom_point() + # Plots  
+# the actual data points 
+geom_ribbon(aes(ymin = lower, ymax = upper, fill = PredictedProb), alpha = 0.25) + 
+# alpha fades out connect lines 
+scale_fill_gradient(low="red", high="green") + # Defines a continuous color 
+# scale for the ribbon layer 
+ggtitle("Predicting Propensity to buy based on Wine Source") + # Title of  
+# the final plot 
+ylab("Predicted Probability - p_to_buyPred") # Specify label for y-axis.  
+# This also serves as the graph legend 
+dev.off()
+
+
+Listing 5-2. Code Segment for Adding Multiple Areas Below and Above the Ribbon Layer
+
+library(ggplot2) 
+g <- ggplot(test_set3, aes(x = Source, y = PredictedProb, group=PredictedProb)) +
+geom_line(aes(colour = PredictedProb), size = 1) + geom_point() + 
+geom_ribbon(aes(ymin = lower, ymax = upper, fill = PredictedProb), alpha = 0.25) 
+# The ggplot_build function returns a list of data frames (one for each  
+# layer) and a panel object with information 
+# about the actual x- and y- axis ranges for plot in context. In our case  
+# this is ribbon plot
+res <- ggplot_build(g) 
+bottom <- res[[2]]$panel_ranges[[1]]$y.range[1] # This sets the floor y-axis 
+# plot range for ggplot2 (ribbon plot) 
+top    <- res[[2]]$panel_ranges[[1]]$y.range[2] # This sets the ceil y-axis 
+# plot range ffor ggplot2 (ribbon plot) 
+ggplot(test_set3, aes(x = Source, y = PredictedProb, group=PredictedProb)) +
+geom_ribbon(aes(ymin = lower, ymax = upper, fill = PredictedProb), alpha=0.25) + 
+# layer for the ribbon 
+geom_ribbon(aes(ymin=bottom, ymax=lower), fill="red", alpha=0.25) + 
+# layer below the ribbon 
+geom_ribbon(aes(ymin=upper, ymax=top), fill="green", alpha=0.25) + 
+# layer above the ribbon 
+geom_point() + geom_line()
+
